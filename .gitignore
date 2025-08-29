@@ -1,0 +1,72 @@
+# Ignore build artifacts
+*.o
+*.obj
+*.exe
+*.bin
+*.iso
+*.img
+*.hdd
+*.elf
+*.map
+*.log
+*.tmp
+*.bak
+*.out
+*.d
+
+# Ignore UEFI/EFI binaries
+*.efi
+
+# UEFI app-specific build outputs
+Build/
+build/
+FV/
+*.fd
+*.pdb
+*.efi.tmp
+*.efi.save
+*.efi.bak
+*.sec
+*.te
+*.pe
+*.depex
+*.map
+*.lst
+*.ia32
+*.x64
+*.arm
+*.arm64
+*.riscv64
+*.cap
+*.db
+*.dbx
+*.auth
+*.esl
+*.sig
+*.efi.log
+*.efi.dbg
+
+# Ignore dependency and intermediate files
+*.d
+*.a
+*.lib
+*.dll
+*.so
+*.dylib
+
+# Ignore VS Code settings
+.vscode/
+
+# Ignore OS generated files
+.DS_Store
+Thumbs.db
+
+# Ignore certificates and test keys
+*.crt
+*.key
+*.pem
+*.cer
+
+# Ignore user-specific files
+*.swp
+*~
