@@ -2,6 +2,17 @@
 #include "../include/efi.h"
 #include "../include/efi_lib.h"
 
+// Scan code definitions
+#define SCAN_UP      0x01
+#define SCAN_DOWN    0x02
+#define SCAN_PAGE_UP 0x09
+#define SCAN_PAGE_DOWN 0x0A
+#define SCAN_ESC     0x17
+
+// Function declarations
+void uint_to_string(UINT64 value, CHAR16 *buffer, UINTN buffer_size);
+void simple_strcpy(CHAR16 *dest, CHAR16 *src);
+
 // Global variables
 EFI_SIMPLE_TEXT_OUTPUT_PROTOCOL *cout = NULL;
 EFI_SIMPLE_TEXT_INPUT_PROTOCOL  *cin  = NULL;
@@ -14,6 +25,13 @@ EFI_HANDLE image = NULL;
 EFI_SMBIOS_PROTOCOL       *smbios_protocol = NULL;
 EFI_MP_SERVICES_PROTOCOL  *mp_services = NULL;
 EFI_GRAPHICS_OUTPUT_PROTOCOL *gop = NULL;
+
+// Scroll buffer system
+#define MAX_OUTPUT_LINES 200
+#define SCREEN_LINES 22
+CHAR16 *output_buffer[MAX_OUTPUT_LINES];
+UINTN total_lines = 0;
+UINTN current_scroll = 0;
 
 // Initialize global variables and protocols
 void init_globals(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable) {
@@ -35,11 +53,151 @@ void init_globals(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable) {
     // Locate Graphics Output Protocol
     EFI_GUID gop_guid = EFI_GRAPHICS_OUTPUT_PROTOCOL_GUID;
     bs->LocateProtocol(&gop_guid, NULL, (VOID**)&gop);
+    
+    // Initialize output buffer
+    for (UINTN i = 0; i < MAX_OUTPUT_LINES; i++) {
+        output_buffer[i] = NULL;
+    }
+    total_lines = 0;
+    current_scroll = 0;
 }
 
-// Simple printf implementation
+// Simple printf implementation that stores output in buffer
 void simple_printf(CHAR16 *format, ...) {
-    cout->OutputString(cout, format);
+    if (total_lines < MAX_OUTPUT_LINES) {
+        // Allocate memory for this line
+        UINTN len = 0;
+        CHAR16 *temp = format;
+        while (*temp != 0) { len++; temp++; }  // Calculate length
+        
+        bs->AllocatePool(EfiLoaderData, (len + 1) * sizeof(CHAR16), (VOID**)&output_buffer[total_lines]);
+        if (output_buffer[total_lines] != NULL) {
+            // Copy string
+            for (UINTN i = 0; i <= len; i++) {
+                output_buffer[total_lines][i] = format[i];
+            }
+            total_lines++;
+        }
+    }
+}
+
+// String copy function
+void simple_strcpy(CHAR16 *dest, CHAR16 *src) {
+    UINTN i = 0;
+    while (src[i] != 0) {
+        dest[i] = src[i];
+        i++;
+    }
+    dest[i] = 0;
+}
+
+// Display scrollable output
+void display_scrollable_output(void) {
+    cout->ClearScreen(cout);
+    cout->SetAttribute(cout, EFI_TEXT_ATTR(EFI_YELLOW, EFI_BLUE));
+    
+    // Calculate end line
+    UINTN end_line = current_scroll + SCREEN_LINES;
+    if (end_line > total_lines) end_line = total_lines;
+    
+    // Display lines
+    for (UINTN i = current_scroll; i < end_line; i++) {
+        if (output_buffer[i] != NULL) {
+            cout->OutputString(cout, output_buffer[i]);
+        }
+    }
+    
+    // Display scroll info
+    if (total_lines > SCREEN_LINES) {
+        cout->SetAttribute(cout, EFI_TEXT_ATTR(EFI_WHITE, EFI_BLACK));
+        cout->SetCursorPosition(cout, 0, SCREEN_LINES);
+        
+        CHAR16 scroll_info[128];
+        CHAR16 current_str[16], total_str[16];
+        uint_to_string(current_scroll + 1, current_str, 16);
+        uint_to_string(total_lines, total_str, 16);
+        
+        simple_strcpy(scroll_info, u"Lines ");
+        UINTN pos = 6;
+        UINTN i = 0;
+        while (current_str[i] != 0) scroll_info[pos++] = current_str[i++];
+        scroll_info[pos++] = u'-';
+        i = 0;
+        CHAR16 end_str[16];
+        uint_to_string((end_line > total_lines ? total_lines : end_line), end_str, 16);
+        while (end_str[i] != 0) scroll_info[pos++] = end_str[i++];
+        scroll_info[pos++] = u' ';
+        scroll_info[pos++] = u'o';
+        scroll_info[pos++] = u'f';
+        scroll_info[pos++] = u' ';
+        i = 0;
+        while (total_str[i] != 0) scroll_info[pos++] = total_str[i++];
+        scroll_info[pos++] = u' ';
+        scroll_info[pos++] = u'|';
+        scroll_info[pos++] = u' ';
+        scroll_info[pos++] = u'U';
+        scroll_info[pos++] = u'p';
+        scroll_info[pos++] = u'/';
+        scroll_info[pos++] = u'D';
+        scroll_info[pos++] = u'o';
+        scroll_info[pos++] = u'w';
+        scroll_info[pos++] = u'n';
+        scroll_info[pos++] = u' ';
+        scroll_info[pos++] = u'A';
+        scroll_info[pos++] = u'r';
+        scroll_info[pos++] = u'r';
+        scroll_info[pos++] = u'o';
+        scroll_info[pos++] = u'w';
+        scroll_info[pos++] = u's';
+        scroll_info[pos++] = u',';
+        scroll_info[pos++] = u' ';
+        scroll_info[pos++] = u'E';
+        scroll_info[pos++] = u'S';
+        scroll_info[pos++] = u'C';
+        scroll_info[pos++] = u' ';
+        scroll_info[pos++] = u't';
+        scroll_info[pos++] = u'o';
+        scroll_info[pos++] = u' ';
+        scroll_info[pos++] = u'e';
+        scroll_info[pos++] = u'x';
+        scroll_info[pos++] = u'i';
+        scroll_info[pos++] = u't';
+        scroll_info[pos] = 0;
+        
+        cout->OutputString(cout, scroll_info);
+    }
+}
+
+// Handle scroll input
+BOOLEAN handle_scroll_input(EFI_INPUT_KEY key) {
+    if (total_lines <= SCREEN_LINES) return FALSE;  // No scrolling needed
+    
+    if (key.ScanCode == SCAN_UP) {
+        if (current_scroll > 0) {
+            current_scroll--;
+            return TRUE;
+        }
+    } else if (key.ScanCode == SCAN_DOWN) {
+        if (current_scroll + SCREEN_LINES < total_lines) {
+            current_scroll++;
+            return TRUE;
+        }
+    } else if (key.ScanCode == SCAN_PAGE_UP) {
+        if (current_scroll >= SCREEN_LINES) {
+            current_scroll -= SCREEN_LINES;
+        } else {
+            current_scroll = 0;
+        }
+        return TRUE;
+    } else if (key.ScanCode == SCAN_PAGE_DOWN) {
+        if (current_scroll + 2 * SCREEN_LINES < total_lines) {
+            current_scroll += SCREEN_LINES;
+        } else if (current_scroll + SCREEN_LINES < total_lines) {
+            current_scroll = total_lines - SCREEN_LINES;
+        }
+        return TRUE;
+    }
+    return FALSE;
 }
 
 // Convert number to string
@@ -670,15 +828,56 @@ void display_storage_info(void) {
                     }
                     simple_printf(u"\r\n");
                     
-                    // Estimate drive type based on characteristics
+                    // Enhanced drive type detection with multiple factors
                     if (block_io->Media->RemovableMedia) {
                         simple_printf(u"  Type: Removable Media\r\n");
                     } else {
-                        // Try to determine if SSD or HDD based on block alignment
+                        // Advanced SSD/HDD detection based on multiple factors
+                        BOOLEAN likely_ssd = FALSE;
+                        
+                        // Factor 1: Block alignment (SSDs typically use 4KB sectors)
                         if (block_io->Media->IoAlign >= 4096 || block_io->Media->BlockSize >= 4096) {
-                            simple_printf(u"  Type: Likely SSD (Advanced Format)\r\n");
+                            likely_ssd = TRUE;
+                        }
+                        
+                        // Factor 2: Optimal transfer characteristics (SSDs often have specific patterns)
+                        if (block_io->Media->OptimalTransferLengthGranularity > 1) {
+                            likely_ssd = TRUE;
+                        }
+                        
+                        // Factor 3: Size patterns (common SSD sizes vs HDD sizes)
+                        if ((size_gb >= 120 && size_gb <= 128) ||   // 120-128GB SSD
+                            (size_gb >= 240 && size_gb <= 256) ||   // 240-256GB SSD
+                            (size_gb >= 480 && size_gb <= 512) ||   // 480-512GB SSD
+                            (size_gb >= 960 && size_gb <= 1024) ||  // 960GB-1TB SSD
+                            (size_gb >= 1920 && size_gb <= 2048)) { // 2TB SSD
+                            likely_ssd = TRUE;
+                        }
+                        
+                        // Factor 4: Very small drives are likely SSDs (eMMC, etc.)
+                        if (size_gb <= 64) {
+                            likely_ssd = TRUE;
+                        }
+                        
+                        if (likely_ssd) {
+                            simple_printf(u"  Type: Likely SSD");
+                            if (block_io->Media->BlockSize >= 4096) {
+                                simple_printf(u" (4K Native)");
+                            } else if (block_io->Media->IoAlign >= 4096) {
+                                simple_printf(u" (4K Aligned)");
+                            }
+                            simple_printf(u"\r\n");
                         } else {
-                            simple_printf(u"  Type: Likely HDD (Legacy Format)\r\n");
+                            simple_printf(u"  Type: Likely HDD (Traditional Spinning Disk)\r\n");
+                        }
+                        
+                        // Additional characteristics
+                        if (block_io->Media->OptimalTransferLengthGranularity > 1) {
+                            CHAR16 opt_str[16];
+                            uint_to_string(block_io->Media->OptimalTransferLengthGranularity, opt_str, 16);
+                            simple_printf(u"  Optimal Transfer: ");
+                            simple_printf(opt_str);
+                            simple_printf(u" blocks\r\n");
                         }
                     }
                     
@@ -697,6 +896,59 @@ void display_storage_info(void) {
     } else {
         simple_printf(u"Failed to enumerate storage devices\r\n");
     }
+    
+    // Try to detect storage controllers for additional drive information
+    simple_printf(u"\r\nStorage Controllers:\r\n");
+    
+    // Check for NVMe controllers (typically SSDs)
+    EFI_GUID nvme_guid = {0x52c78312, 0x8edc, 0x4233, 0x98, 0xf2, 0x1a, 0x1a, 0xa5, 0xe3, 0x88, 0xa5};
+    UINTN nvme_handles = 0;
+    EFI_HANDLE *nvme_buffer = NULL;
+    status = bs->LocateHandleBuffer(ByProtocol, &nvme_guid, NULL, &nvme_handles, &nvme_buffer);
+    if (status == EFI_SUCCESS && nvme_handles > 0) {
+        CHAR16 nvme_str[16];
+        uint_to_string(nvme_handles, nvme_str, 16);
+        simple_printf(u"  NVMe Controllers: ");
+        simple_printf(nvme_str);
+        simple_printf(u" (SSD type drives)\r\n");
+        bs->FreePool(nvme_buffer);
+    }
+    
+    // Check for ATA controllers  
+    EFI_GUID ata_guid = {0x1d3de7f0, 0x0807, 0x424f, 0xaa, 0x69, 0x11, 0xa5, 0x4e, 0x19, 0xa4, 0x6f};
+    UINTN ata_handles = 0;
+    EFI_HANDLE *ata_buffer = NULL;
+    status = bs->LocateHandleBuffer(ByProtocol, &ata_guid, NULL, &ata_handles, &ata_buffer);
+    if (status == EFI_SUCCESS && ata_handles > 0) {
+        CHAR16 ata_str[16];
+        uint_to_string(ata_handles, ata_str, 16);
+        simple_printf(u"  ATA Controllers: ");
+        simple_printf(ata_str);
+        simple_printf(u" (SATA/IDE drives)\r\n");
+        bs->FreePool(ata_buffer);
+    }
+    
+    // Check for SCSI controllers
+    EFI_GUID scsi_guid = {0xa59e8fcf, 0xbda0, 0x43bb, 0x90, 0xb1, 0xd3, 0x73, 0x2e, 0xca, 0xa8, 0x77};
+    UINTN scsi_handles = 0;
+    EFI_HANDLE *scsi_buffer = NULL;
+    status = bs->LocateHandleBuffer(ByProtocol, &scsi_guid, NULL, &scsi_handles, &scsi_buffer);
+    if (status == EFI_SUCCESS && scsi_handles > 0) {
+        CHAR16 scsi_str[16];
+        uint_to_string(scsi_handles, scsi_str, 16);
+        simple_printf(u"  SCSI Controllers: ");
+        simple_printf(scsi_str);
+        simple_printf(u" (SCSI/SAS drives)\r\n");
+        bs->FreePool(scsi_buffer);
+    }
+    
+    if (nvme_handles == 0 && ata_handles == 0 && scsi_handles == 0) {
+        simple_printf(u"  No specific storage controllers detected\r\n");
+        simple_printf(u"  (Using generic Block I/O protocol only)\r\n");
+    }
+    
+    simple_printf(u"\r\nNote: Drive model detection is limited in UEFI.\r\n");
+    simple_printf(u"Boot into OS for detailed drive identification.\r\n");
 }
 
 // Main entry point
@@ -710,7 +962,7 @@ EFI_STATUS EFIAPI efi_main(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable
     simple_printf(u"UEFI Hardware Specification Tool\r\n");
     simple_printf(u"=========================================\r\n\r\n");
     
-    // Display comprehensive hardware information
+    // Collect comprehensive hardware information
     display_firmware_info();
     display_system_info();
     display_cpu_info();
@@ -719,8 +971,29 @@ EFI_STATUS EFIAPI efi_main(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable
     display_storage_info();
     display_battery_info();
 
-    simple_printf(u"\r\nPress any key to exit...\r\n");
-    get_key();
+    // Display with scroll functionality
+    display_scrollable_output();
+    
+    // Handle scrolling input
+    EFI_INPUT_KEY key;
+    while (TRUE) {
+        key = get_key();
+        
+        if (key.ScanCode == SCAN_ESC || key.UnicodeChar == u'q' || key.UnicodeChar == u'Q') {
+            break;
+        }
+        
+        if (handle_scroll_input(key)) {
+            display_scrollable_output();
+        }
+    }
+    
+    // Clean up allocated memory
+    for (UINTN i = 0; i < total_lines; i++) {
+        if (output_buffer[i] != NULL) {
+            bs->FreePool(output_buffer[i]);
+        }
+    }
     
     return EFI_SUCCESS;
 }
