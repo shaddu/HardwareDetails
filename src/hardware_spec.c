@@ -12,6 +12,7 @@
 // Function declarations
 void uint_to_string(UINT64 value, CHAR16 *buffer, UINTN buffer_size);
 void simple_strcpy(CHAR16 *dest, CHAR16 *src);
+void ascii_to_char16(CHAR8 *ascii, CHAR16 *unicode, UINTN max_len);
 
 // Global variables
 EFI_SIMPLE_TEXT_OUTPUT_PROTOCOL *cout = NULL;
@@ -237,13 +238,36 @@ CHAR8* get_smbios_string(EFI_SMBIOS_TABLE_HEADER *record, UINT8 string_number) {
     CHAR8 *string_ptr = (CHAR8*)record + record->Length;
     UINT8 current_string = 1;
     
-    while (current_string < string_number && *string_ptr != 0) {
+    // Navigate to the string area and find the correct string
+    while (current_string < string_number) {
+        // Skip to next string
         while (*string_ptr != 0) string_ptr++;
         string_ptr++;
         current_string++;
+        
+        // Check if we've reached the end of strings (double null terminator)
+        if (*string_ptr == 0) return NULL;
     }
     
     return (*string_ptr != 0) ? string_ptr : NULL;
+}
+
+// Check if a string appears to be a placeholder or default value
+BOOLEAN is_placeholder_string(CHAR8 *str) {
+    if (str == NULL || *str == 0) return TRUE;
+    
+    // Check for common placeholder patterns
+    if ((*str == '0' && *(str+1) == 0) ||                    // "0"
+        (*str == 'N' && *(str+1) == '/' && *(str+2) == 'A') ||   // "N/A"
+        (*str == 'T' && *(str+1) == 'o' && *(str+2) == ' ') ||   // "To be filled..."
+        (*str == 'n' && *(str+1) == 'o' && *(str+2) == 't') ||   // "not specified"
+        (*str == 'D' && *(str+1) == 'e' && *(str+2) == 'f') ||   // "Default"
+        (*str == '(' && *(str+1) == 'T' && *(str+2) == 'o') ||   // "(To be filled...)"
+        (*str == 'U' && *(str+1) == 'n' && *(str+2) == 'k')) {   // "Unknown"
+        return TRUE;
+    }
+    
+    return FALSE;
 }
 
 // Convert ASCII string to CHAR16
@@ -524,61 +548,107 @@ void display_system_info(void) {
                 simple_printf(u"Manufacturer: ");
                 simple_printf(mfg_unicode);
                 simple_printf(u"\r\n");
+            } else {
+                simple_printf(u"Manufacturer: (not available)\r\n");
             }
             
             // Product Name
             CHAR8 *product = get_smbios_string(record, sys_info->ProductName);
-            if (product != NULL) {
+            if (product != NULL && !is_placeholder_string(product)) {
                 CHAR16 prod_unicode[64];
                 ascii_to_char16(product, prod_unicode, 64);
                 simple_printf(u"Product Name: ");
                 simple_printf(prod_unicode);
                 simple_printf(u"\r\n");
+            } else {
+                simple_printf(u"Product Name: (not available)\r\n");
             }
             
             // Version
             CHAR8 *version = get_smbios_string(record, sys_info->Version);
-            if (version != NULL) {
+            if (version != NULL && !is_placeholder_string(version)) {
                 CHAR16 ver_unicode[64];
                 ascii_to_char16(version, ver_unicode, 64);
                 simple_printf(u"Version: ");
                 simple_printf(ver_unicode);
                 simple_printf(u"\r\n");
+            } else {
+                simple_printf(u"Version: (not available)\r\n");
             }
             
-            // Serial Number
-            CHAR8 *serial = get_smbios_string(record, sys_info->SerialNumber);
-            if (serial != NULL) {
-                CHAR16 ser_unicode[64];
-                ascii_to_char16(serial, ser_unicode, 64);
-                simple_printf(u"Serial Number: ");
-                simple_printf(ser_unicode);
-                simple_printf(u"\r\n");
-            }
-            
-            // SKU Number
-            if (sys_info->SKUNumber > 0) {
-                CHAR8 *sku = get_smbios_string(record, sys_info->SKUNumber);
-                if (sku != NULL) {
-                    CHAR16 sku_unicode[64];
-                    ascii_to_char16(sku, sku_unicode, 64);
-                    simple_printf(u"SKU: ");
-                    simple_printf(sku_unicode);
+            // Serial Number (with comprehensive handling)
+            if (sys_info->SerialNumber == 0) {
+                simple_printf(u"Serial Number: (not provided by system)\r\n");
+            } else {
+                CHAR8 *serial = get_smbios_string(record, sys_info->SerialNumber);
+                if (serial != NULL && !is_placeholder_string(serial)) {
+                    CHAR16 ser_unicode[64];
+                    ascii_to_char16(serial, ser_unicode, 64);
+                    simple_printf(u"Serial Number: ");
+                    simple_printf(ser_unicode);
                     simple_printf(u"\r\n");
+                } else {
+                    simple_printf(u"Serial Number: (not available)\r\n");
                 }
             }
             
-            // Family
-            if (sys_info->Family > 0) {
-                CHAR8 *family = get_smbios_string(record, sys_info->Family);
-                if (family != NULL) {
-                    CHAR16 fam_unicode[64];
-                    ascii_to_char16(family, fam_unicode, 64);
-                    simple_printf(u"Family: ");
-                    simple_printf(fam_unicode);
-                    simple_printf(u"\r\n");
+            // // SKU Number
+            // if (sys_info->SKUNumber > 0) {
+            //     CHAR8 *sku = get_smbios_string(record, sys_info->SKUNumber);
+            //     if (sku != NULL && !is_placeholder_string(sku)) {
+            //         CHAR16 sku_unicode[64];
+            //         ascii_to_char16(sku, sku_unicode, 64);
+            //         simple_printf(u"SKU: ");
+            //         simple_printf(sku_unicode);
+            //         simple_printf(u"\r\n");
+            //     }
+            // }
+            
+            // // Family
+            // if (sys_info->Family > 0) {
+            //     CHAR8 *family = get_smbios_string(record, sys_info->Family);
+            //     if (family != NULL && !is_placeholder_string(family)) {
+            //         CHAR16 fam_unicode[64];
+            //         ascii_to_char16(family, fam_unicode, 64);
+            //         simple_printf(u"Family: ");
+            //         simple_printf(fam_unicode);
+            //         simple_printf(u"\r\n");
+            //     }
+            // }
+            
+            // Display UUID if available
+            simple_printf(u"System UUID: ");
+            for (int i = 0; i < 16; i++) {
+                CHAR16 hex_str[8];
+                UINT8 byte_val = sys_info->Uuid[i];
+                
+                // Convert byte to hex string manually
+                CHAR16 hex_chars[] = u"0123456789ABCDEF";
+                hex_str[0] = hex_chars[(byte_val >> 4) & 0xF];
+                hex_str[1] = hex_chars[byte_val & 0xF];
+                hex_str[2] = 0;
+                simple_printf(hex_str);
+                
+                if (i == 3 || i == 5 || i == 7 || i == 9) {
+                    simple_printf(u"-");
                 }
             }
+            simple_printf(u"\r\n");
+            
+            // Check if this looks like a virtual environment
+            if (manufacturer != NULL) {
+                // Check for common virtual machine manufacturers
+                if ((manufacturer[0] == 'Q' && manufacturer[1] == 'E') ||  // QEMU
+                    (manufacturer[0] == 'i' && manufacturer[1] == 'n') ||  // innotek (VirtualBox)
+                    (manufacturer[0] == 'V' && manufacturer[1] == 'M') ||  // VMware
+                    (manufacturer[0] == 'M' && manufacturer[1] == 'i')) {  // Microsoft (Hyper-V)
+                    simple_printf(u"\r\nNote: Virtual machine detected. Hardware serial numbers\r\n");
+                    simple_printf(u"      may not be available or may be virtualized.\r\n");
+                }
+            }
+            
+        } else {
+            simple_printf(u"System information not available (SMBIOS Type 1 not found)\r\n");
         }
     } else {
         simple_printf(u"System information not available (SMBIOS not found)\r\n");
@@ -963,7 +1033,7 @@ EFI_STATUS EFIAPI efi_main(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable
     simple_printf(u"=========================================\r\n\r\n");
     
     // Collect comprehensive hardware information
-    display_firmware_info();
+    // display_firmware_info();
     display_system_info();
     display_cpu_info();
     display_enhanced_memory_info();
