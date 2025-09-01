@@ -303,6 +303,18 @@ typedef struct {
     UINT16        ProcessorFamily2;
 } SMBIOS_TYPE4_PROCESSOR_INFORMATION;
 
+// SMBIOS Type 16 - Physical Memory Array
+typedef struct {
+    SMBIOS_HEADER Header;
+    UINT8         Location;
+    UINT8         Use;
+    UINT8         MemoryErrorCorrection;
+    UINT32        MaximumCapacity;
+    UINT16        MemoryErrorInformationHandle;
+    UINT16        NumberOfMemoryDevices;
+    UINT64        ExtendedMaximumCapacity;
+} SMBIOS_TYPE16_PHYSICAL_MEMORY_ARRAY;
+
 // SMBIOS Type 17 - Memory Device
 typedef struct {
     SMBIOS_HEADER Header;

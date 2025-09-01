@@ -334,40 +334,40 @@ void display_cpu_info(void) {
                 simple_printf(u"\r\n");
             }
             
-            // CPU Speed
-            if (cpu_info->CurrentSpeed > 0) {
-                CHAR16 speed_str[16];
-                uint_to_string(cpu_info->CurrentSpeed, speed_str, 16);
-                simple_printf(u"Current Speed: ");
-                simple_printf(speed_str);
-                simple_printf(u" MHz\r\n");
-            }
+            // // CPU Speed
+            // if (cpu_info->CurrentSpeed > 0) {
+            //     CHAR16 speed_str[16];
+            //     uint_to_string(cpu_info->CurrentSpeed, speed_str, 16);
+            //     simple_printf(u"Current Speed: ");
+            //     simple_printf(speed_str);
+            //     simple_printf(u" MHz\r\n");
+            // }
             
-            if (cpu_info->MaxSpeed > 0) {
-                CHAR16 speed_str[16];
-                uint_to_string(cpu_info->MaxSpeed, speed_str, 16);
-                simple_printf(u"Max Speed: ");
-                simple_printf(speed_str);
-                simple_printf(u" MHz\r\n");
-            }
+            // if (cpu_info->MaxSpeed > 0) {
+            //     CHAR16 speed_str[16];
+            //     uint_to_string(cpu_info->MaxSpeed, speed_str, 16);
+            //     simple_printf(u"Max Speed: ");
+            //     simple_printf(speed_str);
+            //     simple_printf(u" MHz\r\n");
+            // }
             
-            // Core Count
-            if (cpu_info->CoreCount > 0) {
-                CHAR16 core_str[16];
-                uint_to_string(cpu_info->CoreCount, core_str, 16);
-                simple_printf(u"Physical Cores: ");
-                simple_printf(core_str);
-                simple_printf(u"\r\n");
-            }
+            // // Core Count
+            // if (cpu_info->CoreCount > 0) {
+            //     CHAR16 core_str[16];
+            //     uint_to_string(cpu_info->CoreCount, core_str, 16);
+            //     simple_printf(u"Physical Cores: ");
+            //     simple_printf(core_str);
+            //     simple_printf(u"\r\n");
+            // }
             
-            // Thread Count
-            if (cpu_info->ThreadCount > 0) {
-                CHAR16 thread_str[16];
-                uint_to_string(cpu_info->ThreadCount, thread_str, 16);
-                simple_printf(u"Logical Processors: ");
-                simple_printf(thread_str);
-                simple_printf(u"\r\n");
-            }
+            // // Thread Count
+            // if (cpu_info->ThreadCount > 0) {
+            //     CHAR16 thread_str[16];
+            //     uint_to_string(cpu_info->ThreadCount, thread_str, 16);
+            //     simple_printf(u"Logical Processors: ");
+            //     simple_printf(thread_str);
+            //     simple_printf(u"\r\n");
+            // }
         }
     }
     
@@ -388,7 +388,7 @@ EFI_INPUT_KEY get_key(void) {
     return key;
 }
 
-// Display enhanced memory information
+// Display enhanced memory information with slot details
 void display_enhanced_memory_info(void) {
     simple_printf(u"\r\n=== MEMORY INFORMATION ===\r\n");
     
@@ -456,74 +456,245 @@ void display_enhanced_memory_info(void) {
         }
     }
     
-    // Memory module details from SMBIOS
+    // Memory array and slot details from SMBIOS
     if (smbios_protocol != NULL) {
-        simple_printf(u"\r\nMemory Modules:\r\n");
-        
+        // First, check for Physical Memory Array (Type 16)
         EFI_SMBIOS_HANDLE smbios_handle = 0xFFFE;
-        EFI_SMBIOS_TYPE smbios_type = SMBIOS_TYPE_MEMORY_DEVICE;
+        EFI_SMBIOS_TYPE smbios_type = SMBIOS_TYPE_PHYSICAL_MEMORY_ARRAY;
         EFI_SMBIOS_TABLE_HEADER *record = NULL;
-        UINTN module_count = 0;
+        UINT16 total_slots = 0;
+        UINT32 max_capacity_mb = 0;
+        
+        status = smbios_protocol->GetNext(smbios_protocol, &smbios_handle, &smbios_type, &record, NULL);
+        if (status == EFI_SUCCESS && record != NULL) {
+            SMBIOS_TYPE16_PHYSICAL_MEMORY_ARRAY *mem_array = (SMBIOS_TYPE16_PHYSICAL_MEMORY_ARRAY*)record;
+            
+            total_slots = mem_array->NumberOfMemoryDevices;
+            
+            simple_printf(u"\r\nMemory Array Information:\r\n");
+            
+            CHAR16 slot_str[16];
+            uint_to_string(total_slots, slot_str, 16);
+            simple_printf(u"  Total Memory Slots: ");
+            simple_printf(slot_str);
+            simple_printf(u"\r\n");
+            
+            // Maximum capacity
+            if (mem_array->MaximumCapacity != 0x80000000) {
+                max_capacity_mb = mem_array->MaximumCapacity / 1024; // Convert from KB to MB
+                if (max_capacity_mb > 0) {
+                    CHAR16 cap_str[32];
+                    uint_to_string(max_capacity_mb, cap_str, 32);
+                    simple_printf(u"  Maximum Capacity: ");
+                    simple_printf(cap_str);
+                    simple_printf(u" MB");
+                    
+                    if (max_capacity_mb >= 1024) {
+                        UINT32 cap_gb = max_capacity_mb / 1024;
+                        uint_to_string(cap_gb, cap_str, 32);
+                        simple_printf(u" (~");
+                        simple_printf(cap_str);
+                        simple_printf(u" GB)");
+                    }
+                    simple_printf(u"\r\n");
+                }
+            } else if (mem_array->ExtendedMaximumCapacity > 0) {
+                // Extended capacity in bytes
+                UINT64 ext_cap_mb = mem_array->ExtendedMaximumCapacity / (1024 * 1024);
+                CHAR16 cap_str[32];
+                uint_to_string(ext_cap_mb, cap_str, 32);
+                simple_printf(u"  Maximum Capacity: ");
+                simple_printf(cap_str);
+                simple_printf(u" MB");
+                
+                if (ext_cap_mb >= 1024) {
+                    UINT64 cap_gb = ext_cap_mb / 1024;
+                    uint_to_string(cap_gb, cap_str, 32);
+                    simple_printf(u" (~");
+                    simple_printf(cap_str);
+                    simple_printf(u" GB)");
+                }
+                simple_printf(u"\r\n");
+            }
+            
+            // Memory error correction
+            CHAR16 *ecc_type = u"Unknown";
+            switch (mem_array->MemoryErrorCorrection) {
+                case 1: ecc_type = u"Other"; break;
+                case 2: ecc_type = u"Unknown"; break;
+                case 3: ecc_type = u"None"; break;
+                case 4: ecc_type = u"Parity"; break;
+                case 5: ecc_type = u"Single-bit ECC"; break;
+                case 6: ecc_type = u"Multi-bit ECC"; break;
+                case 7: ecc_type = u"CRC"; break;
+            }
+            simple_printf(u"  Error Correction: ");
+            simple_printf(ecc_type);
+            simple_printf(u"\r\n");
+        } else {
+            simple_printf(u"\r\nMemory Array: Information not available\r\n");
+        }
+        
+        // Now enumerate all memory devices (Type 17)
+        simple_printf(u"\r\nMemory Slot Details:\r\n");
+        
+        smbios_handle = 0xFFFE;
+        smbios_type = SMBIOS_TYPE_MEMORY_DEVICE;
+        UINTN slot_count = 0;
+        UINTN populated_slots = 0;
         
         // Find all memory devices
-        smbios_handle = 0xFFFE;
         while (smbios_protocol->GetNext(smbios_protocol, &smbios_handle, &smbios_type, &record, NULL) == EFI_SUCCESS) {
             if (record != NULL) {
                 SMBIOS_TYPE17_MEMORY_DEVICE *mem_device = (SMBIOS_TYPE17_MEMORY_DEVICE*)record;
+                slot_count++;
                 
-                // Skip empty slots
-                if (mem_device->Size == 0) continue;
+                CHAR16 slot_str[16];
+                uint_to_string(slot_count, slot_str, 16);
+                simple_printf(u"  Slot ");
+                simple_printf(slot_str);
                 
-                module_count++;
-                CHAR16 module_str[16];
-                uint_to_string(module_count, module_str, 16);
-                simple_printf(u"  Module ");
-                simple_printf(module_str);
+                // Get slot locator string
+                CHAR8 *locator = get_smbios_string(record, mem_device->DeviceLocator);
+                if (locator != NULL && !is_placeholder_string(locator)) {
+                    CHAR16 loc_unicode[64];
+                    ascii_to_char16(locator, loc_unicode, 64);
+                    simple_printf(u" (");
+                    simple_printf(loc_unicode);
+                    simple_printf(u")");
+                }
                 simple_printf(u": ");
                 
-                // Memory size
-                UINT32 size_mb;
-                if (mem_device->Size == 0x7FFF) {
-                    size_mb = mem_device->ExtendedSize;
-                } else if (mem_device->Size & 0x8000) {
-                    size_mb = (mem_device->Size & 0x7FFF) * 1024; // Size in KB
+                // Check if slot is populated
+                if (mem_device->Size == 0) {
+                    simple_printf(u"Empty\r\n");
                 } else {
-                    size_mb = mem_device->Size; // Size in MB
+                    populated_slots++;
+                    
+                    // Memory size
+                    UINT32 size_mb;
+                    if (mem_device->Size == 0x7FFF) {
+                        size_mb = mem_device->ExtendedSize;
+                    } else if (mem_device->Size & 0x8000) {
+                        size_mb = (mem_device->Size & 0x7FFF) * 1024; // Size in KB
+                    } else {
+                        size_mb = mem_device->Size; // Size in MB
+                    }
+                    
+                    CHAR16 size_str[16];
+                    uint_to_string(size_mb, size_str, 16);
+                    simple_printf(size_str);
+                    simple_printf(u" MB");
+                    
+                    // Memory type
+                    CHAR16 *mem_type = u"Unknown";
+                    switch (mem_device->MemoryType) {
+                        case 24: mem_type = u"DDR3"; break;
+                        case 26: mem_type = u"DDR4"; break;
+                        case 34: mem_type = u"DDR5"; break;
+                        case 18: mem_type = u"DDR"; break;
+                        case 20: mem_type = u"DDR2"; break;
+                        case 25: mem_type = u"DDR3L"; break;
+                        case 27: mem_type = u"LPDDR"; break;
+                        case 28: mem_type = u"LPDDR2"; break;
+                        case 29: mem_type = u"LPDDR3"; break;
+                        case 30: mem_type = u"LPDDR4"; break;
+                        case 33: mem_type = u"LPDDR5"; break;
+                    }
+                    simple_printf(u" ");
+                    simple_printf(mem_type);
+                    
+                    // Memory speed
+                    if (mem_device->Speed > 0) {
+                        CHAR16 speed_str[16];
+                        uint_to_string(mem_device->Speed, speed_str, 16);
+                        simple_printf(u" @ ");
+                        simple_printf(speed_str);
+                        simple_printf(u" MHz");
+                    }
+                    
+                    // Form factor and removability detection
+                    CHAR16 *form_factor = u"Unknown";
+                    BOOLEAN is_removable = TRUE; // Default assumption
+                    
+                    switch (mem_device->FormFactor) {
+                        case 1: form_factor = u"Other"; break;
+                        case 2: form_factor = u"Unknown"; break;
+                        case 3: form_factor = u"SIMM"; break;
+                        case 4: form_factor = u"SIP"; break;
+                        case 5: form_factor = u"Chip"; is_removable = FALSE; break;
+                        case 6: form_factor = u"DIP"; break;
+                        case 7: form_factor = u"ZIP"; break;
+                        case 8: form_factor = u"Proprietary Card"; break;
+                        case 9: form_factor = u"DIMM"; break;
+                        case 10: form_factor = u"TSOP"; is_removable = FALSE; break;
+                        case 11: form_factor = u"Row of chips"; is_removable = FALSE; break;
+                        case 12: form_factor = u"RIMM"; break;
+                        case 13: form_factor = u"SODIMM"; break;
+                        case 14: form_factor = u"SRIMM"; break;
+                        case 15: form_factor = u"FB-DIMM"; break;
+                    }
+                    
+                    simple_printf(u"\r\n");
+                    simple_printf(u"           Form Factor: ");
+                    simple_printf(form_factor);
+                    
+                    if (is_removable) {
+                        simple_printf(u" (Removable)");
+                    } else {
+                        simple_printf(u" (Soldered/Fixed)");
+                    }
+                    simple_printf(u"\r\n");
+                    
+                    // Bank locator if available
+                    CHAR8 *bank = get_smbios_string(record, mem_device->BankLocator);
+                    if (bank != NULL && !is_placeholder_string(bank)) {
+                        CHAR16 bank_unicode[64];
+                        ascii_to_char16(bank, bank_unicode, 64);
+                        simple_printf(u"           Bank: ");
+                        simple_printf(bank_unicode);
+                        simple_printf(u"\r\n");
+                    }
+                    
+                    // Manufacturer if available
+                    CHAR8 *manufacturer = get_smbios_string(record, mem_device->Manufacturer);
+                    if (manufacturer != NULL && !is_placeholder_string(manufacturer)) {
+                        CHAR16 mfg_unicode[64];
+                        ascii_to_char16(manufacturer, mfg_unicode, 64);
+                        simple_printf(u"           Manufacturer: ");
+                        simple_printf(mfg_unicode);
+                        simple_printf(u"\r\n");
+                    }
+                    
+                    // Part number if available
+                    CHAR8 *part_number = get_smbios_string(record, mem_device->PartNumber);
+                    if (part_number != NULL && !is_placeholder_string(part_number)) {
+                        CHAR16 part_unicode[64];
+                        ascii_to_char16(part_number, part_unicode, 64);
+                        simple_printf(u"           Part Number: ");
+                        simple_printf(part_unicode);
+                        simple_printf(u"\r\n");
+                    }
                 }
-                
-                CHAR16 size_str[16];
-                uint_to_string(size_mb, size_str, 16);
-                simple_printf(size_str);
-                simple_printf(u" MB");
-                
-                // Memory type
-                CHAR16 *mem_type = u"Unknown";
-                switch (mem_device->MemoryType) {
-                    case 24: mem_type = u"DDR3"; break;
-                    case 26: mem_type = u"DDR4"; break;
-                    case 34: mem_type = u"DDR5"; break;
-                    case 18: mem_type = u"DDR"; break;
-                    case 20: mem_type = u"DDR2"; break;
-                }
-                simple_printf(u" ");
-                simple_printf(mem_type);
-                
-                // Memory speed
-                if (mem_device->Speed > 0) {
-                    CHAR16 speed_str[16];
-                    uint_to_string(mem_device->Speed, speed_str, 16);
-                    simple_printf(u" @ ");
-                    simple_printf(speed_str);
-                    simple_printf(u" MHz");
-                }
-                
-                simple_printf(u"\r\n");
             }
         }
         
-        if (module_count == 0) {
-            simple_printf(u"  No memory modules detected in SMBIOS\r\n");
+        // Summary
+        simple_printf(u"\r\nMemory Summary:\r\n");
+        CHAR16 summary_str[16];
+        uint_to_string(populated_slots, summary_str, 16);
+        simple_printf(u"  Populated Slots: ");
+        simple_printf(summary_str);
+        simple_printf(u" of ");
+        uint_to_string(slot_count, summary_str, 16);
+        simple_printf(summary_str);
+        simple_printf(u"\r\n");
+        
+        if (slot_count == 0) {
+            simple_printf(u"  No memory slots detected in SMBIOS\r\n");
         }
+    } else {
+        simple_printf(u"\r\nDetailed memory information not available (SMBIOS not found)\r\n");
     }
 }
 
@@ -1037,7 +1208,7 @@ EFI_STATUS EFIAPI efi_main(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable
     display_system_info();
     display_cpu_info();
     display_enhanced_memory_info();
-    display_graphics_info();
+    // display_graphics_info();
     display_storage_info();
     display_battery_info();
 
