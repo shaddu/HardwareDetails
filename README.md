@@ -1,6 +1,6 @@
 # Enhanced UEFI Hardware Specification Tool
 
-A comprehensive UEFI application designed for refurbished hardware assessment. This tool provides detailed hardware specifications suitable for documentation and customer specifications in the refurbishing industry.
+ Tool provides detailed hardware specifications 
 
 ## Features
 
@@ -304,15 +304,6 @@ write_gpt.exe BOOTX64.EFI custom.hdd
 - Use a dedicated USB drive for bootable media
 - Keep backups of important data before testing on production systems
 
-## For Refurbished Hardware Assessment
-
-This tool is specifically designed for hardware refurbishing operations:
-
-- **Inventory Management**: Capture complete system specifications
-- **Customer Documentation**: Generate professional hardware reports  
-- **Quality Assurance**: Verify all components are detected and functional
-- **Pricing Decisions**: Identify SSD vs HDD, RAM configurations, CPU performance
-- **Warranty Claims**: Document hardware specifications before refurbishment
 
 If you prefer to run the steps manually:
 
