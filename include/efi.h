@@ -136,6 +136,14 @@ typedef UINT64 EFI_VIRTUAL_ADDRESS;
 {0x4cf5b200,0x68b8,0x4ca5,\
 0x9e,0xec,{0xb2,0x3e,0x3f,0x50,0x2,0x9a}}
 
+#define EFI_ATA_PASS_THRU_PROTOCOL_GUID \
+{0x1d3de7f0,0x0807,0x424f,\
+0xaa,0x69,{0x11,0xa5,0x4e,0x19,0xa4,0x6f}}
+
+#define EFI_NVME_PASS_THRU_PROTOCOL_GUID \
+{0x52c78312,0x8edc,0x4233,\
+0x98,0xf2,{0x1a,0x1a,0xa5,0xe3,0x88,0xa5}}
+
 // -----------------------------------
 // EFI Configuration Table GUIDs
 // -----------------------------------
@@ -520,6 +528,108 @@ typedef struct EFI_PCI_IO_PROTOCOL {
     UINT64                            RomSize;
     VOID                              *RomImage;
 } EFI_PCI_IO_PROTOCOL;
+
+// -----------------------------------
+// ATA Pass Thru Protocol
+// -----------------------------------
+
+#define EFI_ATA_PASS_THRU_LENGTH_BYTES      0x02
+#define EFI_ATA_PASS_THRU_LENGTH_SECTOR_COUNT 0x01
+
+typedef struct EFI_ATA_PASS_THRU_PROTOCOL EFI_ATA_PASS_THRU_PROTOCOL;
+
+typedef struct {
+    UINT16 Port;
+    UINT16 PortMultiplierPort;
+    EFI_LBA Lba;
+    UINT8 InTransferLength;
+    UINT8 OutTransferLength;
+    UINT8 SectorCount;
+    UINT8 HostCommand[12];
+} EFI_ATA_PASS_THRU_COMMAND_PACKET;
+
+typedef
+EFI_STATUS
+(EFIAPI *EFI_ATA_PASS_THRU_PASSTHRU) (
+    IN EFI_ATA_PASS_THRU_PROTOCOL        *This,
+    IN UINT16                            Port,
+    IN UINT16                            PortMultiplierPort,
+    IN OUT EFI_ATA_PASS_THRU_COMMAND_PACKET *Packet,
+    IN EFI_EVENT                         Event OPTIONAL
+);
+
+typedef struct EFI_ATA_PASS_THRU_PROTOCOL {
+    UINT64 Revision;
+    EFI_ATA_PASS_THRU_PASSTHRU PassThru;
+    VOID *GetNextPort;
+    VOID *GetNextDevice;
+    VOID *BuildDevicePath;
+    VOID *GetDevice;
+    VOID *ResetPort;
+    VOID *ResetDevice;
+    UINT64 Mode;
+} EFI_ATA_PASS_THRU_PROTOCOL;
+
+// -----------------------------------
+// NVMe Pass Thru Protocol
+// -----------------------------------
+
+typedef struct EFI_NVME_PASS_THRU_PROTOCOL EFI_NVME_PASS_THRU_PROTOCOL;
+
+typedef struct {
+    UINT8  Opcode;
+    UINT8  FuseOpcode : 2;
+    UINT8  Reserved : 5;
+    UINT8  Psdt : 1;
+    UINT16 CommandId;
+    UINT8  Nsid;
+    UINT8  Reserved2[3];
+    UINT64 Mptr;
+    UINT64 Prp1;
+    UINT64 Prp2;
+    UINT32 Cdw10;
+    UINT32 Cdw11;
+    UINT32 Cdw12;
+    UINT32 Cdw13;
+    UINT32 Cdw14;
+    UINT32 Cdw15;
+} EFI_NVME_COMMAND;
+
+typedef struct {
+    UINT32 Cdw0;
+    UINT32 Cdw1;
+    UINT32 Cdw2;
+    UINT32 Cdw3;
+} EFI_NVME_COMPLETION;
+
+typedef struct {
+    UINT32                              QueueType;
+    UINT16                              QueueId;
+    EFI_NVME_COMMAND                    *NvmeCmd;
+    EFI_NVME_COMPLETION                 *NvmeCompletion;
+    UINT32                              CommandTimeout;
+    VOID                                *TransferBuffer;
+    UINT32                              TransferLength;
+    VOID                                *MetadataBuffer;
+    UINT32                              MetadataLength;
+} EFI_NVME_PASS_THRU_COMMAND_PACKET;
+
+typedef
+EFI_STATUS
+(EFIAPI *EFI_NVME_PASS_THRU_PASSTHRU) (
+    IN EFI_NVME_PASS_THRU_PROTOCOL       *This,
+    IN UINT32                            NamespaceId,
+    IN OUT EFI_NVME_PASS_THRU_COMMAND_PACKET *Packet,
+    IN EFI_EVENT                         Event OPTIONAL
+);
+
+typedef struct EFI_NVME_PASS_THRU_PROTOCOL {
+    UINT64 Revision;
+    EFI_NVME_PASS_THRU_PASSTHRU PassThru;
+    VOID *GetNextNamespace;
+    VOID *BuildDevicePath;
+    VOID *GetNamespace;
+} EFI_NVME_PASS_THRU_PROTOCOL;
 
 // EFI_PIXEL_BITMASK
 typedef struct {
