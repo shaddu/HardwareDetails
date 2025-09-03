@@ -455,6 +455,7 @@ EFI_STATUS get_ata_drive_info(EFI_HANDLE handle, CHAR16 *serial_buffer, UINTN se
 
     packet.InTransferLength = 1;  // 1 sector
     packet.OutTransferLength = 0;
+    packet.SectorCount = 1;
 
     // ATA IDENTIFY DEVICE command
     packet.HostCommand[0] = 0xEC;  // IDENTIFY DEVICE
@@ -474,40 +475,55 @@ EFI_STATUS get_ata_drive_info(EFI_HANDLE handle, CHAR16 *serial_buffer, UINTN se
     status = ata_pass_thru->PassThru(ata_pass_thru, 0, 0, &packet, NULL);
 
     if (status == EFI_SUCCESS) {
-        // Parse IDENTIFY DEVICE data
-        // Serial number is at offset 20-39 (20 bytes, little endian words)
-        UINTN serial_offset = 20;
-        UINTN serial_len = 0;
+        // For ATA Pass Thru, we need to read the data using a different method
+        // Let's try to use the BLOCK_IO protocol to read the IDENTIFY data
+        EFI_BLOCK_IO_PROTOCOL *block_io = NULL;
+        EFI_GUID block_guid = EFI_BLOCK_IO_PROTOCOL_GUID;
 
-        for (UINTN i = 0; i < 20 && serial_len < serial_size - 1; i += 2) {
-            UINT8 byte1 = identify_data[serial_offset + i];
-            UINT8 byte2 = identify_data[serial_offset + i + 1];
+        if (bs->OpenProtocol(handle, &block_guid, (VOID**)&block_io, image, NULL, EFI_OPEN_PROTOCOL_BY_HANDLE_PROTOCOL) == EFI_SUCCESS) {
+            // Try to read the IDENTIFY data from the drive
+            // This is a simplified approach - in practice, this might not work for all drives
+            status = block_io->ReadBlocks(block_io, block_io->Media->MediaId, 0, 512, identify_data);
 
-            if (byte1 != 0 && byte1 != ' ') {
-                serial_buffer[serial_len++] = byte1;
+            if (status == EFI_SUCCESS) {
+                // Parse IDENTIFY DEVICE data
+                // Serial number is at offset 20-39 (20 bytes, little endian words)
+                UINTN serial_offset = 20;
+                UINTN serial_len = 0;
+
+                for (UINTN i = 0; i < 20 && serial_len < serial_size - 1; i += 2) {
+                    UINT8 byte1 = identify_data[serial_offset + i];
+                    UINT8 byte2 = identify_data[serial_offset + i + 1];
+
+                    if (byte1 != 0 && byte1 != ' ') {
+                        serial_buffer[serial_len++] = byte1;
+                    }
+                    if (byte2 != 0 && byte2 != ' ') {
+                        serial_buffer[serial_len++] = byte2;
+                    }
+                }
+                serial_buffer[serial_len] = 0;
+
+                // Model number is at offset 54-93 (40 bytes, little endian words)
+                UINTN model_offset = 54;
+                UINTN model_len = 0;
+
+                for (UINTN i = 0; i < 40 && model_len < model_size - 1; i += 2) {
+                    UINT8 byte1 = identify_data[model_offset + i];
+                    UINT8 byte2 = identify_data[model_offset + i + 1];
+
+                    if (byte1 != 0 && byte1 != ' ') {
+                        model_buffer[model_len++] = byte1;
+                    }
+                    if (byte2 != 0 && byte2 != ' ') {
+                        model_buffer[model_len++] = byte2;
+                    }
+                }
+                model_buffer[model_len] = 0;
             }
-            if (byte2 != 0 && byte2 != ' ') {
-                serial_buffer[serial_len++] = byte2;
-            }
+
+            bs->CloseProtocol(handle, &block_guid, image, NULL);
         }
-        serial_buffer[serial_len] = 0;
-
-        // Model number is at offset 54-93 (40 bytes, little endian words)
-        UINTN model_offset = 54;
-        UINTN model_len = 0;
-
-        for (UINTN i = 0; i < 40 && model_len < model_size - 1; i += 2) {
-            UINT8 byte1 = identify_data[model_offset + i];
-            UINT8 byte2 = identify_data[model_offset + i + 1];
-
-            if (byte1 != 0 && byte1 != ' ') {
-                model_buffer[model_len++] = byte1;
-            }
-            if (byte2 != 0 && byte2 != ' ') {
-                model_buffer[model_len++] = byte2;
-            }
-        }
-        model_buffer[model_len] = 0;
     }
 
     bs->FreePool(identify_data);
@@ -2131,6 +2147,38 @@ void display_additional_details(UINTN left_split) {
 
                     // Try to get drive name and serial from SMBIOS or PCI
                     BOOLEAN found_info = FALSE;
+
+                    // Try to get drive serial and model using ATA/NVMe protocols
+                    CHAR16 serial_buffer[64] = u"";
+                    CHAR16 model_buffer[128] = u"";
+                    EFI_STATUS drive_status = EFI_UNSUPPORTED;
+
+                    // Try ATA first
+                    drive_status = get_ata_drive_info(handle_buffer[i], serial_buffer, 64, model_buffer, 128);
+                    if (drive_status != EFI_SUCCESS) {
+                        // Try NVMe if ATA failed
+                        drive_status = get_nvme_drive_info(handle_buffer[i], serial_buffer, 64, model_buffer, 128);
+                    }
+
+                    if (drive_status == EFI_SUCCESS && (serial_buffer[0] != 0 || model_buffer[0] != 0)) {
+                        set_cursor_position(left_split + 2, ++current_row);
+                        cout->SetAttribute(cout, EFI_TEXT_ATTR(EFI_YELLOW, EFI_BLUE));
+
+                        if (model_buffer[0] != 0) {
+                            simple_printf(u"Model: ");
+                            simple_printf(model_buffer);
+                            simple_printf(u"\r\n");
+                        }
+
+                        if (serial_buffer[0] != 0) {
+                            set_cursor_position(left_split + 2, ++current_row);
+                            simple_printf(u"Serial: ");
+                            simple_printf(serial_buffer);
+                            simple_printf(u"\r\n");
+                        }
+
+                        found_info = TRUE;
+                    }
 
                     // Check for PCI IO protocol to get device info
                     EFI_GUID pci_io_guid = EFI_PCI_IO_PROTOCOL_GUID;
